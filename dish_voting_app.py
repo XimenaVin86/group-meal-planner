@@ -39,9 +39,12 @@ def add_dish(name, type):
     dishes_ws.append_row([str(uuid.uuid4()), name, type])
 
 def delete_dish_by_name(name):
-    cell = dishes_ws.find(name)
-    if cell:
-        dishes_ws.delete_row(cell.row)
+    matches = dishes_ws.findall(name)
+    for cell in matches:
+        row = dishes_ws.row_values(cell.row)
+        if len(row) >= 3 and row[1] == name:
+            dishes_ws.delete_row(cell.row)
+            break
 
 def load_votes():
     data = votes_ws.get_all_records()
@@ -81,13 +84,20 @@ if st.session_state.phase == "submit":
     current_dishes = load_dishes()
     if current_dishes:
         st.subheader("Current proposed dishes")
-        for d in current_dishes:
+        used_keys = set()
+        for i, d in enumerate(current_dishes):
+            name = d.get('name', f'Unnamed {i}')
+            type_ = d.get('type', 'Unknown')
+            key = f"delete_{name}_{i}"
+            if key in used_keys:
+                key = f"delete_{name}_{i}_{uuid.uuid4()}"
+            used_keys.add(key)
             col1, col2 = st.columns([4, 1])
             with col1:
-                st.markdown(f"- {d['name']} ({d['type']})")
+                st.markdown(f"- {name} ({type_})")
             with col2:
-                if st.button("❌", key=f"delete_{d['name']}"):
-                    delete_dish_by_name(d['name'])
+                if st.button("❌", key=key):
+                    delete_dish_by_name(name)
                     st.rerun()
 
     if st.button("Proceed to voting"):
@@ -97,7 +107,7 @@ if st.session_state.phase == "submit":
 elif st.session_state.phase == "vote":
     st.header("Step 2: Vote for dishes you like")
     st.write("You can vote for as many dishes as you want.")
-    dish_names = [d['name'] for d in load_dishes()]
+    dish_names = [d['name'] for d in load_dishes() if 'name' in d]
     with st.form("vote_form"):
         selected = st.multiselect("Select your favorite dishes:", dish_names)
         voted = st.form_submit_button("Submit votes")
@@ -148,7 +158,7 @@ elif st.session_state.phase == "ingredients":
 elif st.session_state.phase == "shopping":
     st.header("Step 5: Shopping list")
     df = pd.DataFrame(load_ingredients())
-    shopping = df.groupby(["name", "unit"])['qty'].sum().reset_index()
+    shopping = df.groupby(["name", "unit"])["qty"].sum().reset_index()
     shopping = shopping.rename(columns={"name": "Ingredient", "unit": "Unit", "qty": "Total Quantity"})
 
     st.dataframe(shopping)
