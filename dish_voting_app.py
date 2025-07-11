@@ -9,86 +9,86 @@ import json
 st.set_page_config(page_title="Group Meal Planner", layout="wide")
 st.title("🍽️ Group Meal Planner")
 
-# Centered layout container
-with st.container():
-    st.markdown("<div style='max-width: 600px; margin: auto;'>", unsafe_allow_html=True)
+# Set up Google Sheets connection
+def get_gsheet_connection():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+    client = gspread.authorize(credentials)
+    return client
 
-    # Set up Google Sheets connection
-    def get_gsheet_connection():
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        credentials = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
-        client = gspread.authorize(credentials)
-        return client
+# Load or create sheets
+client = get_gsheet_connection()
+sheet = client.open("Group Meal Planner")
+dishes_ws = sheet.worksheet("dishes")
+votes_ws = sheet.worksheet("votes")
+ing_ws = sheet.worksheet("ingredients")
 
-    # Load or create sheets
-    client = get_gsheet_connection()
-    sheet = client.open("Group Meal Planner")
-    dishes_ws = sheet.worksheet("dishes")
-    votes_ws = sheet.worksheet("votes")
-    ing_ws = sheet.worksheet("ingredients")
+# Phase state
+if "phase" not in st.session_state:
+    st.session_state.phase = "submit"
 
-    # Phase state
-    if "phase" not in st.session_state:
-        st.session_state.phase = "submit"
+# Helper functions for Google Sheets
+def load_dishes():
+    try:
+        data = dishes_ws.get_all_records()
+        return data
+    except:
+        return []
 
-    # Helper functions for Google Sheets
-    def load_dishes():
-        try:
-            data = dishes_ws.get_all_records()
-            return data
-        except:
-            return []
+def add_dish(name, type):
+    dishes_ws.append_row([str(uuid.uuid4()), name, type])
 
-    def add_dish(name, type):
-        dishes_ws.append_row([str(uuid.uuid4()), name, type])
+def delete_dish_by_name(name):
+    all_rows = dishes_ws.get_all_values()
+    headers = all_rows[0]
+    new_rows = [row for row in all_rows[1:] if len(row) < 2 or row[1].strip().lower() != name.strip().lower()]
 
-    def delete_dish_by_name(name):
-        all_rows = dishes_ws.get_all_values()
-        headers = all_rows[0]
-        new_rows = [row for row in all_rows[1:] if len(row) < 2 or row[1].strip().lower() != name.strip().lower()]
+    # Clear the sheet and re-upload
+    dishes_ws.clear()
+    dishes_ws.append_row(headers)
+    for row in new_rows:
+        row = row + [""] * (len(headers) - len(row))
+        dishes_ws.append_row(row)
 
-        # Clear the sheet and re-upload
-        dishes_ws.clear()
-        dishes_ws.append_row(headers)
-        for row in new_rows:
-            row = row + [""] * (len(headers) - len(row))
-            dishes_ws.append_row(row)
+def load_votes():
+    data = votes_ws.get_all_records()
+    return {row['dish']: row['votes'] for row in data}
 
-    def load_votes():
-        data = votes_ws.get_all_records()
-        return {row['dish']: row['votes'] for row in data}
+def submit_votes(selected):
+    votes = load_votes()
+    for dish in selected:
+        votes[dish] = votes.get(dish, 0) + 1
+    votes_ws.clear()
+    votes_ws.append_row(["dish", "votes"])
+    for dish, count in votes.items():
+        votes_ws.append_row([dish, count])
 
-    def submit_votes(selected):
-        votes = load_votes()
-        for dish in selected:
-            votes[dish] = votes.get(dish, 0) + 1
-        votes_ws.clear()
-        votes_ws.append_row(["dish", "votes"])
-        for dish, count in votes.items():
-            votes_ws.append_row([dish, count])
+def load_top_dishes():
+    votes = load_votes()
+    sorted_votes = sorted(votes.items(), key=lambda x: x[1], reverse=True)
+    return [dish for dish, _ in sorted_votes[:6]]
 
-    def load_top_dishes():
-        votes = load_votes()
-        sorted_votes = sorted(votes.items(), key=lambda x: x[1], reverse=True)
-        return [dish for dish, _ in sorted_votes[:6]]
+def add_ingredient(dish, name, qty, unit):
+    ing_ws.append_row([dish, name, qty, unit])
 
-    def add_ingredient(dish, name, qty, unit):
-        ing_ws.append_row([dish, name, qty, unit])
+def load_ingredients():
+    return ing_ws.get_all_records()
 
-    def load_ingredients():
-        return ing_ws.get_all_records()
+# Navigation helper
+def nav_buttons(prev_phase=None, next_phase=None):
+    cols = st.columns([1, 5, 1])
+    if prev_phase:
+        if cols[0].button("⬅️ Back"):
+            st.session_state.phase = prev_phase
+            st.rerun()
+    if next_phase:
+        if cols[2].button("Next ➡️"):
+            st.session_state.phase = next_phase
+            st.rerun()
 
-    # Navigation helper
-    def nav_buttons(prev_phase=None, next_phase=None):
-        cols = st.columns([1, 5, 1])
-        if prev_phase:
-            if cols[0].button("⬅️ Back"):
-                st.session_state.phase = prev_phase
-                st.rerun()
-        if next_phase:
-            if cols[2].button("Next ➡️"):
-                st.session_state.phase = next_phase
-                st.rerun()
+# Layout container
+outer_left, main_col, outer_right = st.columns([1, 4, 1])
+with main_col:
 
     # Step 1: Submit dishes
     if st.session_state.phase == "submit":
@@ -203,5 +203,3 @@ with st.container():
             st.rerun()
 
         nav_buttons(prev_phase="ingredients")
-
-    st.markdown("</div>", unsafe_allow_html=True)
