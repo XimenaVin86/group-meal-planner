@@ -2,23 +2,72 @@ import streamlit as st
 import pandas as pd
 import uuid
 import io
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import json
 
 st.set_page_config(page_title="Group Meal Planner", layout="centered")
 st.title("🍽️ Group Meal Planner")
 
-# Session state to keep track of app phase
+# Set up Google Sheets connection
+def get_gsheet_connection():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+    client = gspread.authorize(credentials)
+    return client
+
+# Load or create sheets
+client = get_gsheet_connection()
+sheet = client.open("Group Meal Planner")
+dishes_ws = sheet.worksheet("dishes")
+votes_ws = sheet.worksheet("votes")
+ing_ws = sheet.worksheet("ingredients")
+
+# Phase state
 if "phase" not in st.session_state:
     st.session_state.phase = "submit"
-if "dishes" not in st.session_state:
-    st.session_state.dishes = []
-if "votes" not in st.session_state:
-    st.session_state.votes = {}
-if "ingredients" not in st.session_state:
-    st.session_state.ingredients = []
-if "num_people" not in st.session_state:
-    st.session_state.num_people = 8
 
-# Phase 1: Submit dishes
+# Helper functions for Google Sheets
+def load_dishes():
+    try:
+        data = dishes_ws.get_all_records()
+        return data
+    except:
+        return []
+
+def add_dish(name, type):
+    dishes_ws.append_row([str(uuid.uuid4()), name, type])
+
+def delete_dish_by_name(name):
+    cell = dishes_ws.find(name)
+    if cell:
+        dishes_ws.delete_row(cell.row)
+
+def load_votes():
+    data = votes_ws.get_all_records()
+    return {row['dish']: row['votes'] for row in data}
+
+def submit_votes(selected):
+    votes = load_votes()
+    for dish in selected:
+        votes[dish] = votes.get(dish, 0) + 1
+    votes_ws.clear()
+    votes_ws.append_row(["dish", "votes"])
+    for dish, count in votes.items():
+        votes_ws.append_row([dish, count])
+
+def load_top_dishes():
+    votes = load_votes()
+    sorted_votes = sorted(votes.items(), key=lambda x: x[1], reverse=True)
+    return [dish for dish, _ in sorted_votes[:6]]
+
+def add_ingredient(dish, name, qty, unit):
+    ing_ws.append_row([dish, name, qty, unit])
+
+def load_ingredients():
+    return ing_ws.get_all_records()
+
+# Step 1: Submit dishes
 if st.session_state.phase == "submit":
     st.header("Step 1: Submit your dishes")
     with st.form("dish_form"):
@@ -26,50 +75,48 @@ if st.session_state.phase == "submit":
         dish_type = st.selectbox("Dietary type", ["Vegan", "Vegetarian", "Carnivore"])
         submitted = st.form_submit_button("Add dish")
         if submitted and dish_name:
-            dish_id = str(uuid.uuid4())
-            st.session_state.dishes.append({"id": dish_id, "name": dish_name, "type": dish_type})
+            add_dish(dish_name, dish_type)
             st.success(f"Added: {dish_name} ({dish_type})")
 
-    if st.session_state.dishes:
+    current_dishes = load_dishes()
+    if current_dishes:
         st.subheader("Current proposed dishes")
-        delete_dish = None
-        for d in st.session_state.dishes:
+        for d in current_dishes:
             col1, col2 = st.columns([4, 1])
             with col1:
                 st.markdown(f"- {d['name']} ({d['type']})")
             with col2:
-                if st.button("❌", key=f"delete_{d['id']}"):
-                    delete_dish = d
-        if delete_dish:
-            st.session_state.dishes = [d for d in st.session_state.dishes if d != delete_dish]
-            st.rerun()
+                if st.button("❌", key=f"delete_{d['name']}"):
+                    delete_dish_by_name(d['name'])
+                    st.rerun()
 
     if st.button("Proceed to voting"):
         st.session_state.phase = "vote"
 
-# Phase 2: Vote on dishes
+# Step 2: Vote for dishes
 elif st.session_state.phase == "vote":
     st.header("Step 2: Vote for dishes you like")
     st.write("You can vote for as many dishes as you want.")
+    dish_names = [d['name'] for d in load_dishes()]
     with st.form("vote_form"):
-        selected = st.multiselect("Select your favorite dishes:", [d["name"] for d in st.session_state.dishes])
+        selected = st.multiselect("Select your favorite dishes:", dish_names)
         voted = st.form_submit_button("Submit votes")
         if voted:
-            for dish in selected:
-                st.session_state.votes[dish] = st.session_state.votes.get(dish, 0) + 1
+            submit_votes(selected)
             st.success("Votes submitted!")
 
     if st.button("See results and select dishes"):
         st.session_state.phase = "select"
 
-# Phase 3: Select top dishes automatically
+# Step 3: Show top dishes
 elif st.session_state.phase == "select":
     st.header("Step 3: Top voted dishes")
-    vote_df = pd.DataFrame([{"Dish": k, "Votes": v} for k, v in st.session_state.votes.items()])
+    votes = load_votes()
+    vote_df = pd.DataFrame([{"Dish": k, "Votes": v} for k, v in votes.items()])
     vote_df = vote_df.sort_values("Votes", ascending=False)
     st.dataframe(vote_df)
 
-    top_dishes = vote_df.head(6)["Dish"].tolist()
+    top_dishes = load_top_dishes()
     st.session_state.top_dishes = top_dishes
 
     st.markdown("### Selected dishes:")
@@ -79,7 +126,7 @@ elif st.session_state.phase == "select":
     if st.button("Add ingredients for selected dishes"):
         st.session_state.phase = "ingredients"
 
-# Phase 4: Add ingredients
+# Step 4: Add ingredients
 elif st.session_state.phase == "ingredients":
     st.header("Step 4: Add ingredients or link to a recipe")
     for dish in st.session_state.top_dishes:
@@ -91,21 +138,16 @@ elif st.session_state.phase == "ingredients":
             ing_unit = st.text_input("Unit (e.g. grams, units, cups)", key=f"unit_{dish}")
             added = st.form_submit_button("Add ingredient")
             if added and ing_name and ing_unit:
-                st.session_state.ingredients.append({
-                    "dish": dish,
-                    "name": ing_name,
-                    "qty": ing_qty,
-                    "unit": ing_unit
-                })
+                add_ingredient(dish, ing_name, ing_qty, ing_unit)
                 st.success(f"Added {ing_name} to {dish}")
 
     if st.button("Generate shopping list"):
         st.session_state.phase = "shopping"
 
-# Phase 5: Generate shopping list
+# Step 5: Generate shopping list
 elif st.session_state.phase == "shopping":
     st.header("Step 5: Shopping list")
-    df = pd.DataFrame(st.session_state.ingredients)
+    df = pd.DataFrame(load_ingredients())
     shopping = df.groupby(["name", "unit"])['qty'].sum().reset_index()
     shopping = shopping.rename(columns={"name": "Ingredient", "unit": "Unit", "qty": "Total Quantity"})
 
@@ -127,4 +169,10 @@ elif st.session_state.phase == "shopping":
     st.markdown("---")
     if st.button("🔁 Reset all and start over"):
         st.session_state.clear()
+        dishes_ws.clear()
+        votes_ws.clear()
+        ing_ws.clear()
+        dishes_ws.append_row(["id", "name", "type"])
+        votes_ws.append_row(["dish", "votes"])
+        ing_ws.append_row(["dish", "name", "qty", "unit"])
         st.rerun()
