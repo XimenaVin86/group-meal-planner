@@ -32,14 +32,19 @@ if st.session_state.phase == "submit":
 
     if st.session_state.dishes:
         st.subheader("Current proposed dishes")
-        for i, d in enumerate(st.session_state.dishes):
+        delete_dish = None
+        for d in st.session_state.dishes:
             col1, col2 = st.columns([4, 1])
             with col1:
                 st.markdown(f"- {d['name']} ({d['type']})")
             with col2:
-                if st.button("❌", key=f"delete_{i}"):
-                    st.session_state.dishes.pop(i)
-                    st.experimental_rerun()
+                if st.button("❌", key=f"delete_{d['id']}"):
+                    delete_dish = d
+
+        if delete_dish:
+            st.session_state.dishes = [d for d in st.session_state.dishes if d != delete_dish]
+            st.rerun()
+
 
     if st.button("Proceed to voting"):
         st.session_state.phase = "vote"
