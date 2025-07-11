@@ -74,6 +74,18 @@ def add_ingredient(dish, name, qty, unit):
 def load_ingredients():
     return ing_ws.get_all_records()
 
+# Navigation helper
+def nav_buttons(prev_phase=None, next_phase=None):
+    cols = st.columns([1, 5, 1])
+    if prev_phase:
+        if cols[0].button("⬅️ Back"):
+            st.session_state.phase = prev_phase
+            st.rerun()
+    if next_phase:
+        if cols[2].button("Next ➡️"):
+            st.session_state.phase = next_phase
+            st.rerun()
+
 # Step 1: Submit dishes
 if st.session_state.phase == "submit":
     st.header("Step 1: Submit your dishes")
@@ -104,8 +116,7 @@ if st.session_state.phase == "submit":
                     delete_dish_by_name(name)
                     st.rerun()
 
-    if st.button("Proceed to voting"):
-        st.session_state.phase = "vote"
+    nav_buttons(next_phase="vote")
 
 # Step 2: Vote for dishes
 elif st.session_state.phase == "vote":
@@ -119,8 +130,7 @@ elif st.session_state.phase == "vote":
             submit_votes(selected)
             st.success("Votes submitted!")
 
-    if st.button("See results and select dishes"):
-        st.session_state.phase = "select"
+    nav_buttons(prev_phase="submit", next_phase="select")
 
 # Step 3: Show top dishes
 elif st.session_state.phase == "select":
@@ -137,8 +147,7 @@ elif st.session_state.phase == "select":
     for dish in top_dishes:
         st.markdown(f"- {dish}")
 
-    if st.button("Add ingredients for selected dishes"):
-        st.session_state.phase = "ingredients"
+    nav_buttons(prev_phase="vote", next_phase="ingredients")
 
 # Step 4: Add ingredients
 elif st.session_state.phase == "ingredients":
@@ -155,8 +164,7 @@ elif st.session_state.phase == "ingredients":
                 add_ingredient(dish, ing_name, ing_qty, ing_unit)
                 st.success(f"Added {ing_name} to {dish}")
 
-    if st.button("Generate shopping list"):
-        st.session_state.phase = "shopping"
+    nav_buttons(prev_phase="select", next_phase="shopping")
 
 # Step 5: Generate shopping list
 elif st.session_state.phase == "shopping":
@@ -179,7 +187,6 @@ elif st.session_state.phase == "shopping":
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    # Reset button
     st.markdown("---")
     if st.button("🔁 Reset all and start over"):
         st.session_state.clear()
@@ -190,3 +197,5 @@ elif st.session_state.phase == "shopping":
         votes_ws.append_row(["dish", "votes"])
         ing_ws.append_row(["dish", "name", "qty", "unit"])
         st.rerun()
+
+    nav_buttons(prev_phase="ingredients")
