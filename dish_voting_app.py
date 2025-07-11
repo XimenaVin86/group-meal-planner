@@ -40,13 +40,16 @@ def add_dish(name, type):
 
 def delete_dish_by_name(name):
     all_rows = dishes_ws.get_all_values()
-    for i, row in enumerate(all_rows[1:], start=2):  # Skip header row
-        if len(row) >= 2 and row[1].strip().lower() == name.strip().lower():
-            try:
-                dishes_ws.delete_row(i)
-            except Exception as e:
-                st.error(f"Failed to delete row {i}: {e}")
-            break
+    headers = all_rows[0]
+    new_rows = [row for row in all_rows[1:] if len(row) < 2 or row[1].strip().lower() != name.strip().lower()]
+    
+    # Clear the sheet and re-upload
+    dishes_ws.clear()
+    dishes_ws.append_row(headers)
+    for row in new_rows:
+        # Ensure each row has the same number of columns as headers
+        row = row + [""] * (len(headers) - len(row))
+        dishes_ws.append_row(row)
 
 def load_votes():
     data = votes_ws.get_all_records()
