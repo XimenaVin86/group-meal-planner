@@ -6,7 +6,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 
-st.set_page_config(page_title="Group Meal Planner", layout="centered")
+st.set_page_config(page_title="Group Meal Planner", layout="wide")
 st.title("🍽️ Group Meal Planner")
 
 # Set up Google Sheets connection
@@ -42,12 +42,11 @@ def delete_dish_by_name(name):
     all_rows = dishes_ws.get_all_values()
     headers = all_rows[0]
     new_rows = [row for row in all_rows[1:] if len(row) < 2 or row[1].strip().lower() != name.strip().lower()]
-    
+
     # Clear the sheet and re-upload
     dishes_ws.clear()
     dishes_ws.append_row(headers)
     for row in new_rows:
-        # Ensure each row has the same number of columns as headers
         row = row + [""] * (len(headers) - len(row))
         dishes_ws.append_row(row)
 
@@ -97,7 +96,7 @@ if st.session_state.phase == "submit":
             if key in used_keys:
                 key = f"delete_{name}_{i}_{uuid.uuid4()}"
             used_keys.add(key)
-            col1, col2 = st.columns([4, 1])
+            col1, col2 = st.columns([6, 1])
             with col1:
                 st.markdown(f"- {name} ({type_})")
             with col2:
