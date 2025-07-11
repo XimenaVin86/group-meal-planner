@@ -108,11 +108,13 @@ if st.session_state.phase == "submit":
             if key in used_keys:
                 key = f"delete_{name}_{i}_{uuid.uuid4()}"
             used_keys.add(key)
-            row = st.columns([8, 1])
-            row[0].markdown(f"- {name} ({type_})")
-            if row[1].button("❌", key=key):
-                delete_dish_by_name(name)
-                st.rerun()
+            col1, col2 = st.columns([0.85, 0.15])
+            with col1:
+                st.markdown(f"- {name} ({type_})")
+            with col2:
+                if st.button("🗑️", key=key, help="Delete dish"):
+                    delete_dish_by_name(name)
+                    st.rerun()
 
     nav_buttons(next_phase="vote")
 
