@@ -39,11 +39,10 @@ def add_dish(name, type):
     dishes_ws.append_row([str(uuid.uuid4()), name, type])
 
 def delete_dish_by_name(name):
-    matches = dishes_ws.findall(name)
-    for cell in matches:
-        row = dishes_ws.row_values(cell.row)
-        if len(row) >= 3 and row[1] == name:
-            dishes_ws.delete_row(cell.row)
+    all_rows = dishes_ws.get_all_values()
+    for i, row in enumerate(all_rows[1:], start=2):  # Skip header
+        if len(row) >= 2 and row[1] == name:
+            dishes_ws.delete_row(i)
             break
 
 def load_votes():
