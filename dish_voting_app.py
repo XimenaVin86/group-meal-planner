@@ -40,11 +40,9 @@ if st.session_state.phase == "submit":
             with col2:
                 if st.button("❌", key=f"delete_{d['id']}"):
                     delete_dish = d
-
         if delete_dish:
             st.session_state.dishes = [d for d in st.session_state.dishes if d != delete_dish]
             st.rerun()
-
 
     if st.button("Proceed to voting"):
         st.session_state.phase = "vote"
@@ -83,12 +81,13 @@ elif st.session_state.phase == "select":
 
 # Phase 4: Add ingredients
 elif st.session_state.phase == "ingredients":
-    st.header("Step 4: Add ingredients per person")
+    st.header("Step 4: Add ingredients or link to a recipe")
     for dish in st.session_state.top_dishes:
         st.subheader(f"Ingredients for {dish}")
         with st.form(f"ingredients_{dish}"):
+            recipe_url = st.text_input("Optional: Link to full recipe", key=f"url_{dish}")
             ing_name = st.text_input("Ingredient name", key=f"ing_{dish}")
-            ing_qty = st.number_input("Amount per person", min_value=0.0, step=0.1, key=f"qty_{dish}")
+            ing_qty = st.number_input("Total amount needed", min_value=0.0, step=0.1, key=f"qty_{dish}")
             ing_unit = st.text_input("Unit (e.g. grams, units, cups)", key=f"unit_{dish}")
             added = st.form_submit_button("Add ingredient")
             if added and ing_name and ing_unit:
@@ -105,11 +104,10 @@ elif st.session_state.phase == "ingredients":
 
 # Phase 5: Generate shopping list
 elif st.session_state.phase == "shopping":
-    st.header("Step 5: Shopping list for 8 people")
+    st.header("Step 5: Shopping list")
     df = pd.DataFrame(st.session_state.ingredients)
-    df["total"] = df["qty"] * st.session_state.num_people
-    shopping = df.groupby(["name", "unit"])['total'].sum().reset_index()
-    shopping = shopping.rename(columns={"name": "Ingredient", "unit": "Unit", "total": "Total Quantity"})
+    shopping = df.groupby(["name", "unit"])['qty'].sum().reset_index()
+    shopping = shopping.rename(columns={"name": "Ingredient", "unit": "Unit", "qty": "Total Quantity"})
 
     st.dataframe(shopping)
 
@@ -124,3 +122,9 @@ elif st.session_state.phase == "shopping":
         file_name="shopping_list.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+    # Reset button
+    st.markdown("---")
+    if st.button("🔁 Reset all and start over"):
+        st.session_state.clear()
+        st.rerun()
